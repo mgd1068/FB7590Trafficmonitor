@@ -1,0 +1,189 @@
+# gui.py
+"""
+Kleine Desktop-GUI mit PyQt5 und pyqtgraph zur Anzeige von Upload-/Downloadraten
+auf Basis der FRITZ!Box-Daten. Zeigt aktuelle Werte und einen Live-Graphen.
+Download und Upload werden als gefüllte Flächen angezeigt.
+Die Y-Achse wird dynamisch an den Verlauf angepasst (+5 Mbit Puffer).
+Hover-Werte und Min/Max-Anzeige ergänzen die Darstellung.
+Neu: Rückblättern im Zeitverlauf (30 Min), Live-Modus mit Rückkehrpfeil
++ Tooltip folgt der Maus, Zeitstempel auf der X-Achse, Live-Fenster skalierbar
+Jetzt mit 3D-Look, plastischen Kurven und dunklem Tron-Hintergrund.
+Zusätzlich: Glow-Effekt und spiegelartige Reflektion in den Kurven.
+Fensterfarbe orientiert sich am dunklen Systemdesign.
+"""
+
+import sys
+import os
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QToolTip, QPushButton
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QPalette, QColor
+from config import Config
+from fritzreader import FritzReader
+import pyqtgraph as pg
+import numpy as np
+
+class FritzWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.cfg = Config()
+        self.reader = FritzReader.from_config(history_size=360)
+        self.live_window = 60
+
+        self.setWindowTitle("FRITZ!Speed")
+        self.resize(600, 400)
+        x, y = self.cfg.get_window_position()
+        self.move(x, y)
+        if self.cfg.get_always_on_top():
+            self.setWindowFlag(Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.label = QLabel("Verbinde zur Fritzbox...", self)
+        self.label.setStyleSheet("color: white;")
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+
+        self.minmax_label = QLabel("", self)
+        self.minmax_label.setStyleSheet("color: white;")
+        self.minmax_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.minmax_label)
+
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setBackground((0, 0, 0))
+        self.plot_widget.addLegend(offset=(10, 10))
+        self.plot_widget.showGrid(x=True, y=True, alpha=0.1)
+        self.plot_widget.setMouseEnabled(x=True, y=False)
+        self.view = self.plot_widget.getViewBox()
+        self.view.setLimits(xMin=0)
+
+        self.plot_widget.setLabel('left', 'Mbit/s', **{'color': 'white'})
+        self.plot_widget.setLabel('bottom', 'Zeit', units='s', **{'color': 'white'})
+
+        self.vLine = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('gray', style=Qt.DotLine))
+        self.plot_widget.addItem(self.vLine, ignoreBounds=True)
+        self.proxy = pg.SignalProxy(self.plot_widget.scene().sigMouseMoved, rateLimit=60, slot=self.mouse_moved)
+
+        self.dl_shadow = self.plot_widget.plot(pen=pg.mkPen(color=(50, 255, 50, 100), width=10))
+        self.ul_shadow = self.plot_widget.plot(pen=pg.mkPen(color=(255, 50, 50, 100), width=10))
+
+        self.dl_glow = self.plot_widget.plot(pen=pg.mkPen(color=(0, 255, 0, 80), width=20))
+        self.ul_glow = self.plot_widget.plot(pen=pg.mkPen(color=(255, 0, 0, 80), width=20))
+
+        self.dl_curve = self.plot_widget.plot(pen=pg.mkPen(color=(0, 255, 0, 255), width=2), name="Download")
+        self.ul_curve = self.plot_widget.plot(pen=pg.mkPen(color=(255, 80, 80, 255), width=2), name="Upload")
+
+        self.dl_reflection = self.plot_widget.plot(pen=pg.mkPen(color=(0, 255, 0, 40), width=2, style=Qt.DotLine))
+        self.ul_reflection = self.plot_widget.plot(pen=pg.mkPen(color=(255, 0, 0, 40), width=2, style=Qt.DotLine))
+
+        self.dl_fill = pg.FillBetweenItem(self.dl_curve, pg.PlotCurveItem())
+        self.ul_fill = pg.FillBetweenItem(self.ul_curve, pg.PlotCurveItem())
+        self.plot_widget.addItem(self.dl_fill)
+        self.plot_widget.addItem(self.ul_fill)
+        layout.addWidget(self.plot_widget)
+
+        self.return_button = QPushButton("⏪ Zurück zum Live-Modus")
+        self.return_button.setVisible(False)
+        self.return_button.clicked.connect(self.scroll_to_latest)
+        layout.addWidget(self.return_button)
+
+        if self.reader.connect():
+            self.update_bandwidth()
+            self.timer = QTimer()
+            self.timer.timeout.connect(self.update_bandwidth)
+            self.timer.start(self.cfg.get_refresh_interval() * 1000)
+        else:
+            self.label.setText("Verbindung fehlgeschlagen")
+
+    def update_bandwidth(self):
+        down, up = self.reader.get_bandwidth()
+        self.label.setText(f"↓ {down} Mbit/s    ↑ {up} Mbit/s")
+
+        dl_history, ul_history = self.reader.get_history()
+        x = np.arange(len(dl_history))
+
+        self.dl_shadow.setData(x, [v * 1.01 for v in dl_history])
+        self.ul_shadow.setData(x, [v * 1.01 for v in ul_history])
+        self.dl_glow.setData(x, dl_history)
+        self.ul_glow.setData(x, ul_history)
+        self.dl_curve.setData(x, dl_history)
+        self.ul_curve.setData(x, ul_history)
+        self.dl_reflection.setData(x, [-v * 0.6 for v in dl_history])
+        self.ul_reflection.setData(x, [-v * 0.6 for v in ul_history])
+
+        y_max = max(dl_history + ul_history) if dl_history and ul_history else 100
+        self.plot_widget.setYRange(-y_max * 0.6, y_max + 5)
+
+        if dl_history and ul_history:
+            self.minmax_label.setText(f"DL min: {min(dl_history)} | max: {max(dl_history)}    UL min: {min(ul_history)} | max: {max(ul_history)}")
+
+        self.plot_widget.removeItem(self.dl_fill)
+        self.plot_widget.removeItem(self.ul_fill)
+        dl_base = pg.PlotCurveItem(x, [0]*len(x), pen=None)
+        ul_base = pg.PlotCurveItem(x, [0]*len(x), pen=None)
+        self.dl_fill = pg.FillBetweenItem(self.dl_curve, dl_base, brush=pg.mkBrush(0, 255, 0, 60))
+        self.ul_fill = pg.FillBetweenItem(self.ul_curve, ul_base, brush=pg.mkBrush(255, 0, 0, 60))
+        self.plot_widget.addItem(self.dl_fill)
+        self.plot_widget.addItem(self.ul_fill)
+
+        self.check_live_view(len(x))
+
+    def check_live_view(self, total_points):
+        view_range = self.view.viewRange()[0]
+        visible_right = view_range[1]
+        if visible_right < total_points - 1:
+            self.return_button.setVisible(True)
+        else:
+            self.return_button.setVisible(False)
+            self.view.setXRange(max(0, total_points - self.live_window), total_points)
+
+    def scroll_to_latest(self):
+        dl, _ = self.reader.get_history()
+        total = len(dl)
+        self.view.setXRange(max(0, total - self.live_window), total)
+        self.return_button.setVisible(False)
+
+    def mouse_moved(self, evt):
+        pos = evt[0]
+        if self.plot_widget.sceneBoundingRect().contains(pos):
+            mouse_point = self.plot_widget.plotItem.vb.mapSceneToView(pos)
+            x_idx = int(mouse_point.x())
+            dl, ul = self.reader.get_history()
+            if 0 <= x_idx < len(dl):
+                self.label.setText(f"↓ {dl[x_idx]} Mbit/s    ↑ {ul[x_idx]} Mbit/s")
+                self.vLine.setPos(x_idx)
+                global_pos = self.mapToGlobal(self.plot_widget.mapFromScene(pos))
+                tooltip_text = f"T+{x_idx*5}s\n↓ {dl[x_idx]} ↑ {ul[x_idx]} Mbit/s"
+                QToolTip.showText(global_pos, tooltip_text, self)
+
+    def closeEvent(self, event):
+        pos = self.pos()
+        self.cfg.config['WINDOW']['x'] = str(pos.x())
+        self.cfg.config['WINDOW']['y'] = str(pos.y())
+        with open(os.path.join(os.path.dirname(__file__), 'config.ini'), 'w') as configfile:
+            self.cfg.config.write(configfile)
+        event.accept()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    dark_palette = QPalette()
+    dark_palette.setColor(QPalette.Window, QColor(32, 32, 32))
+    dark_palette.setColor(QPalette.WindowText, Qt.white)
+    dark_palette.setColor(QPalette.Base, QColor(25, 25, 25))
+    dark_palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+    dark_palette.setColor(QPalette.ToolTipBase, Qt.white)
+    dark_palette.setColor(QPalette.ToolTipText, Qt.white)
+    dark_palette.setColor(QPalette.Text, Qt.white)
+    dark_palette.setColor(QPalette.Button, QColor(45, 45, 45))
+    dark_palette.setColor(QPalette.ButtonText, Qt.white)
+    dark_palette.setColor(QPalette.BrightText, Qt.red)
+    dark_palette.setColor(QPalette.Highlight, QColor(142, 45, 197).lighter())
+    dark_palette.setColor(QPalette.HighlightedText, Qt.black)
+    app.setPalette(dark_palette)
+
+    widget = FritzWidget()
+    widget.setStyleSheet("background-color: #202020; color: white;")
+    widget.show()
+    sys.exit(app.exec_())

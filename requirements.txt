@@ -1,4 +1,5 @@
-PyQt5>=5.15
-pyqtgraph>=0.13
-fritzconnection>=1.11
-numpy>=1.21
+fritzconnection==1.12.1
+numpy==1.26.4
+PyQt5==5.15.10
+pyqtgraph==0.13.3
+scipy==1.13.1
