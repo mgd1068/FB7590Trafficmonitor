@@ -2,71 +2,85 @@
 
 Ein leichtes, eigenständiges Desktop-Tool zur Anzeige der aktuellen Upload- und Downloadraten einer FRITZ!Box – mit grafischer Darstellung in Echtzeit, entwickelt für eine einfache "Auf einen Blick"-Übersicht.
 
+![FB Speed Monitor](pic/showcase.png)
+
+> **Dokumentation:** [Benutzerhandbuch (USER_GUIDE.md)](USER_GUIDE.md) · [Architektur & Code-Referenz (ARCHITECTURE.md)](ARCHITECTURE.md)
+
 ## Features
 
-- **Zuverlässige Datenabfrage:** Nutzt mehrere Methoden zur Abfrage der Bandbreitendaten, um mit verschiedenen FRITZ!Box-Modellen kompatibel zu sein.
-- **Saubere Daten:** Eine integrierte Plausibilitätsprüfung filtert Messfehler und Ausreißer für eine stabile und korrekte grafische Darstellung.
+- **Automatische Geräteerkennung:** SSDP/UPnP-Discovery erkennt FRITZ!Box-Geräte im Netz selbständig; unterstützt über 12 Modelle mit modellspezifischen Fähigkeiten.
+- **Zuverlässige Datenabfrage:** Drei unabhängige Methoden zur Bandbreitenabfrage mit automatischem Fallback für maximale Kompatibilität.
+- **Saubere Daten:** Integrierte Plausibilitätsprüfung filtert Messfehler und Ausreißer.
 - **Informatives Cockpit:**
-    - Anzeige der Live-Raten für Up- und Download in farbcodierten Labels (Grün für Download, Rosa für Upload).
-    - Anzeige der maximalen Leitungskapazität.
-    - Anzeige der in der aktuellen Sitzung erreichten Spitzenwerte.
+    - Live-Raten für Up- und Download (Mbit/s) in vier Metric-Cards.
+    - Anzeige der Leitungskapazität und Sitzungs-Spitzenwerte.
+    - Modell, WAN-IP und Leitungstyp in der Infozeile.
 - **Interaktiver Live-Graph:**
-    - Zeigt den Bandbreitenverlauf der letzten Minuten.
-    - Ein Crosshair folgt der Maus und zeigt die exakten Werte zu einem beliebigen Zeitpunkt im Graphen an.
-    - Der Graph signalisiert Verbindungsabbrüche mit einer deutlichen Text-Warnung.
+    - Verlauf der letzten 12 Minuten (360 Messpunkte bei 2 s Intervall).
+    - Crosshair mit Tooltip zeigt exakte Werte zu jedem Zeitpunkt.
+    - Fehlermeldung direkt im Graph bei Verbindungsabbruch.
 - **Anpassbare Darstellung:**
-    - Heller und dunkler Hintergrundmodus.
-    - Zwei Kurven-Stile: "Neon-Lines" und "Gefüllte Flächen".
-    - Flexible Darstellung des Upload-Graphen (überlagert oder gespiegelt).
-    - Skalierung der Y-Achse wahlweise fest an der Leitungskapazität oder dynamisch am Spitzenwert.
+    - Dunkler (Catppuccin Mocha) und heller Hintergrundmodus.
+    - Zwei Kurven-Stile: *Neon-Lines* und *Gefüllte Flächen*.
+    - Upload-Anzeige überlagert oder gespiegelt unter der Nulllinie.
+    - Y-Achse an Leitungskapazität oder dynamisch am Spitzenwert.
+    - Optionale PChip-Glättung der Kurven (erfordert scipy).
 - **Benutzerfreundlich:**
-    - "Immer im Vordergrund"-Modus, um die Anzeige über anderen Fenstern zu halten.
-    - Speichert die Fensterposition beim Schließen.
-    - Führt den Benutzer beim ersten Start durch die Konfiguration.
-    - Läuft dank Threading jederzeit flüssig, ohne die Oberfläche zu blockieren.
+    - *Immer im Vordergrund*-Modus.
+    - Fensterposition wird gespeichert.
+    - Windows DPI-Awareness für gestochen scharfe Darstellung auf HiDPI-Monitoren.
 
-## Voraussetzungen
+## Schnellstart
 
-- Python 3.x
-- Installierte Abhängigkeiten aus `requirements.txt`.
-
-## Installation
-
-1.  Repository klonen oder herunterladen.
-2.  Abhängigkeiten installieren:
-    ```
-    pip install -r requirements.txt
-    ```
-3.  Die Anwendung beim ersten Start über den Einstellungsdialog konfigurieren (FRITZ!Box-IP, Benutzer, Passwort). Die Einstellungen werden in der `config.ini` gespeichert.
-
-## Start
-
+```bash
+# Linux
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 python gui.py
+```
 
+```bat
+REM Windows
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements.txt
+python gui.py
+```
+
+Ausführliche Installations- und Konfigurationsanleitung: [USER_GUIDE.md](USER_GUIDE.md)
 
 ## Projektstruktur
 
-├── config.ini           # Konfigurationswerte
-├── config.py            # Einlesen der Konfiguration
-├── fritzreader.py       # Verbindung zur FB & Bandbreiten-Abfrage
-├── fritzworker.py       # Hintergrund-Thread für die Netzwerkkommunikation
-├── gui.py               # Grafische Benutzeroberfläche mit PyQt5
+```
+FB7590Trafficmonitor/
+├── gui.py               # Grafische Benutzeroberfläche (PyQt5 + pyqtgraph)
+├── fritzworker.py       # Hintergrund-Worker (QObject in QThread)
+├── fritzreader.py       # TR-064-Kommunikation & Bandbreitenmessung
+├── fritz_discovery.py   # SSDP/UPnP-Discovery & Modell-Datenbank
+├── config.py            # Konfigurationsparser mit typisierten Gettern
+├── config.ini           # Benutzereinstellungen (wird beim ersten Start erstellt)
 ├── requirements.txt     # Python-Abhängigkeiten
-└── README.md            # Diese Datei
-
+├── USER_GUIDE.md        # Benutzerhandbuch (englisch)
+├── ARCHITECTURE.md      # Code- & Architektur-Dokumentation (englisch)
+└── pic/
+    └── showcase.png     # Screenshot
+```
 
 ## Abhängigkeiten
 
-- `PyQt5`
-- `pyqtgraph`
-- `fritzconnection`
-- `numpy`
-- `scipy` (Optional, für die Funktion "Kurven glätten")
+| Paket | Mindestversion | Zweck |
+|-------|---------------|-------|
+| `PyQt5` | 5.15 | GUI-Framework |
+| `pyqtgraph` | 0.13 | Live-Graph |
+| `fritzconnection` | 1.12 | TR-064/UPnP-Kommunikation |
+| `numpy` | 1.24 | Datenverarbeitung |
+| `scipy` | 1.10 | Kurvenglättung *(optional)* |
 
-## Hinweis
+## Voraussetzungen FRITZ!Box
 
-- Erfordert aktivierte UPnP- bzw. TR-064-Schnittstelle auf der FRITZ!Box.
-- Das Tool greift **lesend** auf den Router zu. Keine Konfiguration wird verändert.
+UPnP und TR-064 müssen auf der FRITZ!Box aktiviert sein:
+*Heimnetz → Netzwerk → Netzwerkeinstellungen → Zugriff für Anwendungen zulassen*
+
+Das Tool greift **ausschließlich lesend** auf den Router zu – keine Einstellung wird verändert.
 
 ## Lizenz
 

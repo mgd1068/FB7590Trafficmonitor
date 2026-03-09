@@ -1,0 +1,14 @@
+# User configuration (contains credentials – never commit)
+config.ini
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/

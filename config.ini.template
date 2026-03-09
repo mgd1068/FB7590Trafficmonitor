@@ -1,0 +1,75 @@
+# FB Speed Monitor – Configuration Template
+# ==========================================
+# Copy this file to "config.ini" and adjust the values to match your setup.
+# The application creates config.ini automatically on first start, so this
+# template is mainly useful for scripted deployments or manual pre-configuration.
+#
+# Syntax:
+#   key = value          standard assignment
+#   ; comment            inline comment (semicolon)
+#   # comment            inline comment (hash)
+#
+# Boolean values: yes/no, true/false, 1/0  (all accepted by ConfigParser)
+
+[FRITZBOX]
+# IP address or hostname of your FRITZ!Box.
+# Common defaults: 192.168.178.1 (AVM default), fritz.box (mDNS hostname)
+# For VPN connections use the remote LAN address of the router.
+address  = 192.168.178.1
+
+# Login name for the TR-064 interface.
+# Leave empty if your FRITZ!Box uses password-only authentication
+# (older firmware without dedicated user accounts).
+username = admin
+
+# Router password (stored in plain text – restrict file permissions on
+# shared machines: chmod 600 config.ini).
+password = yourpassword
+
+
+[WINDOW]
+# Screen coordinates of the top-left corner of the application window
+# (in pixels, relative to the primary monitor's origin).
+# Delete this section or set both values to 100 to reset to the default position.
+x            = 100
+y            = 100
+
+# Keep the window floating above all other windows.
+# yes | no
+always_on_top = yes
+
+
+[APP]
+# How often to query the router for new bandwidth data (in seconds).
+# Valid range: 1 – 60  |  Default: 2
+refresh_interval = 2
+
+# Graph background colour.
+# schwarz = dark (Catppuccin Mocha)
+# weiss   = light
+bg = schwarz
+
+# Curve rendering style.
+# Neon-Lines      = bright lines, no fill
+# Gefüllte Flächen = semi-transparent filled areas
+style = Neon-Lines
+
+# How the upload curve is displayed relative to the download curve.
+# Überlagert        = both curves share the same positive Y-axis (overlaid)
+# Spiegeln unter 0  = download above zero, upload mirrored below zero
+ulmode = Überlagert
+
+# PChip spline smoothing (upsamples curves 6× for a fluid appearance).
+# Requires the "scipy" package to be installed; the checkbox in the settings
+# dialog is greyed out when scipy is unavailable.
+# yes | no
+smoothing = no
+
+# Animated transitions for value updates in the metric cards.
+# yes | no
+animation = yes
+
+# Y-axis scaling strategy.
+# An Leitungskapazität anpassen  = fixed upper bound at the router's rated line speed
+# Dynamisch an Spitzenwert       = upper bound follows the session peak value
+yaxis_scaling = An Leitungskapazität anpassen
